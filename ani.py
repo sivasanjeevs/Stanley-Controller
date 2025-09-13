@@ -99,12 +99,12 @@ class Car:
         self.axle_track = 1.7
         self.rear_overhang = (self.overall_length - self.wheelbase) / 2
 
-        self.tracker = StanleyController(self.k, self.ksoft, self.kyaw, self.ksteer, self.max_steer, self.wheelbase, self.px, self.py, self.pyaw)
+        self.tracker = StanleyController(self.k, self.ksoft, self.kyaw, self.ksteer, self.max_steer, self.wheelbase)
         self.kbm = KinematicBicycleModel(self.wheelbase, self.dt)
 
     def drive(self):
         
-        self.delta, self.target_id, self.crosstrack_error = self.tracker.stanley_control(self.x, self.y, self.yaw, self.v, self.delta)
+        self.delta, self.target_id, self.crosstrack_error = self.tracker.stanley_control(self.x, self.y, self.yaw, self.v, self.delta, self.px, self.py, self.pyaw)
 
         # Stop near the final waypoint
         try:

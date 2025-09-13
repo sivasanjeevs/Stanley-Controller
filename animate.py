@@ -23,7 +23,7 @@ class Simulation:
         self.map_size_x = 60
         self.map_size_y = 20
         self.frames = 1300
-        self.loop = False
+        self.loop = True
 
 class Path:
 
@@ -33,9 +33,36 @@ class Path:
         with open('data/waypoints.csv', newline='') as f:
             rows = list(csv.reader(f, delimiter=','))
 
-        ds = 0.05
         x, y = [[float(i) for i in row] for row in zip(*rows[1:])]
-        self.px, self.py, self.pyaw, _ = generate_cubic_spline(x, y, ds)
+
+        # Use the original waypoint polyline (no spline). Densify straight
+        # segments for smoother target selection and heading computation.
+        def densify_polyline(x_points, y_points, step=0.5):
+            px_out = []
+            py_out = []
+            for i in range(len(x_points) - 1):
+                x0, y0 = x_points[i], y_points[i]
+                x1, y1 = x_points[i+1], y_points[i+1]
+                dx, dy = x1 - x0, y1 - y0
+                seg_len = (dx*dx + dy*dy) ** 0.5
+                if seg_len == 0:
+                    continue
+                n = max(2, int(seg_len / step) + 1)
+                t = np.linspace(0.0, 1.0, n, endpoint=False)
+                px_out.extend(x0 + dx * t)
+                py_out.extend(y0 + dy * t)
+            px_out.append(x_points[-1])
+            py_out.append(y_points[-1])
+            return np.asarray(px_out), np.asarray(py_out)
+
+        self.px, self.py = densify_polyline(x, y, step=0.5)
+        dx = np.diff(self.px)
+        dy = np.diff(self.py)
+        if dx.size == 0:
+            self.pyaw = np.array([0.0])
+        else:
+            self.pyaw = np.arctan2(dy, dx)
+            self.pyaw = np.append(self.pyaw, self.pyaw[-1])
 
 class Car:
 
@@ -45,7 +72,7 @@ class Car:
         self.x = init_x
         self.y = init_y
         self.yaw = init_yaw
-        self.v = 25.0
+        self.v = 200.0
         self.delta = 0.0
         self.wheelbase = 2.5
         self.max_steer = radians(33)
@@ -75,14 +102,54 @@ class Car:
         self.tracker = StanleyController(self.k, self.ksoft, self.kyaw, self.ksteer, self.max_steer, self.wheelbase, self.px, self.py, self.pyaw)
         self.kbm = KinematicBicycleModel(self.wheelbase, self.dt)
 
+    # def drive(self):
+        
+    #     self.delta, self.target_id, self.crosstrack_error = self.tracker.stanley_control(self.x, self.y, self.yaw, self.v, self.delta)
+
+    #     # Stop near the final waypoint
+    #     try:
+    #         from math import hypot
+    #         if self.target_id >= len(self.px) - 1:
+    #             if hypot(self.x - self.px[-1], self.y - self.py[-1]) < 0.5:
+    #                 self.v = 0.0
+    #                 self.delta = 0.0
+    #     except Exception:
+    #         pass
+
+    #     self.x, self.y, self.yaw = self.kbm.kinematic_model(self.x, self.y, self.yaw, self.v, self.delta)
+    # animate.py -> Car class
+
     def drive(self):
         
+        # If the car is already stopped, don't do anything else
+        if self.v < 0.1:
+            return
+
         self.delta, self.target_id, self.crosstrack_error = self.tracker.stanley_control(self.x, self.y, self.yaw, self.v, self.delta)
-        self.x, self.y, self.yaw = self.kbm.kinematic_model(self.x, self.y, self.yaw, self.v, self.delta)
+
+        # --- IMPROVED STOPPING LOGIC ---
+        try:
+            from math import hypot
+            # Check if the target is the final waypoint
+            is_last_target = self.target_id >= len(self.px) - 1
+            # Calculate distance to the absolute final point
+            distance_to_end = hypot(self.x - self.px[-1], self.y - self.py[-1])
+
+            # If our target is the end and we are close enough, stop.
+            if is_last_target and distance_to_end < 1.5: # Increased stopping radius to 1.5m
+                self.v = 0.0
+                self.delta = 0.0
+
+        except Exception:
+            pass
+
+        # Only update the model if we are not stopped
+        if self.v > 0.0:
+            self.x, self.y, self.yaw = self.kbm.kinematic_model(self.x, self.y, self.yaw, self.v, self.delta)
 
 class Fargs:
 
-    def __init__(self, ax, sim, path, car, desc, outline, fr, rr, fl, rl, rear_axle, annotation, target, yaw_arr, yaw_data, crosstrack_arr, crosstrack_data):
+    def __init__(self, ax, sim, path, car, desc, outline, fr, rr, fl, rl, rear_axle, annotation, target, yaw_arr, yaw_data, crosstrack_arr, crosstrack_data, trail_line, trail_x, trail_y):
         
         self. ax = ax
         self.sim = sim
@@ -101,6 +168,9 @@ class Fargs:
         self.yaw_data = yaw_data
         self.crosstrack_arr = crosstrack_arr
         self.crosstrack_data = crosstrack_data
+        self.trail_line = trail_line
+        self.trail_x = trail_x
+        self.trail_y = trail_y
 
 def animate(frame, fargs):
 
@@ -121,12 +191,13 @@ def animate(frame, fargs):
     yaw_data = fargs.yaw_data
     crosstrack_arr = fargs.crosstrack_arr
     crosstrack_data = fargs.crosstrack_data
+    trail_line = fargs.trail_line
+    trail_x = fargs.trail_x
+    trail_y = fargs.trail_y
 
     ax[0].set_title(f'{sim.dt*frame:.2f}s', loc='right')
 
-    # Camera tracks car
-    ax[0].set_xlim(car.x - sim.map_size_x, car.x + sim.map_size_x)
-    ax[0].set_ylim(car.y - sim.map_size_y, car.y + sim.map_size_y)
+    # Static view: limits are set once in main()
 
     # Drive and draw car
     car.drive()
@@ -137,6 +208,11 @@ def animate(frame, fargs):
     fl.set_data(*fl_plot)
     rl.set_data(*rl_plot)
     rear_axle.set_data(car.x, car.y)
+
+    # Update trail
+    trail_x.append(car.x)
+    trail_y.append(car.y)
+    trail_line.set_data(trail_x, trail_y)
 
     # Show car's target
     target.set_data(path.px[car.target_id], path.py[car.target_id])
@@ -166,10 +242,34 @@ def main():
 
     interval = sim.dt * 10**3
 
-    fig, ax = plt.subplots(3, 1)
+    # Fullscreen window
+    fig = plt.figure()
+    try:
+        mgr = plt.get_current_fig_manager()
+        mgr.full_screen_toggle()
+    except Exception:
+        pass
+
+    # Layout using GridSpec: left column = map (spans both rows),
+    # right column = yaw (top) and crosstrack (bottom)
+    from matplotlib.gridspec import GridSpec
+    gs = GridSpec(nrows=2, ncols=2, figure=fig, width_ratios=[1.0, 1.0], height_ratios=[1.0, 1.0])
+    ax0 = fig.add_subplot(gs[:, 0])
+    ax1 = fig.add_subplot(gs[0, 1])
+    ax2 = fig.add_subplot(gs[1, 1])
+    ax = [ax0, ax1, ax2]
 
     ax[0].set_aspect('equal')
     ax[0].plot(path.px, path.py, '--', color='gold')
+    # Fit entire map in view with a margin
+    try:
+        margin = 20
+        min_x, max_x = float(np.min(path.px)), float(np.max(path.px))
+        min_y, max_y = float(np.min(path.py)), float(np.max(path.py))
+        ax[0].set_xlim(min_x - margin, max_x + margin)
+        ax[0].set_ylim(min_y - margin, max_y + margin)
+    except Exception:
+        pass
 
     annotation = ax[0].annotate(f"Crosstrack error: {float('inf')}", xy=(car.x - 10, car.y + 5), color='black', annotation_clip=False)
     target, = ax[0].plot([], [], '+r')
@@ -180,6 +280,8 @@ def main():
     fl, = ax[0].plot([], [], color='black')
     rl, = ax[0].plot([], [], color='black')
     rear_axle, = ax[0].plot(car.x, car.y, '+', color='black', markersize=1)
+    trail_line, = ax[0].plot([], [], color='blue', linewidth=1.5, alpha=0.8)
+    trail_x, trail_y = [], []
 
     yaw_arr = []
     yaw_data, = ax[1].plot([], [])
@@ -211,11 +313,56 @@ def main():
             yaw_arr=yaw_arr,
             yaw_data=yaw_data,
             crosstrack_arr=crosstrack_arr,
-            crosstrack_data=crosstrack_data
+            crosstrack_data=crosstrack_data,
+            trail_line=trail_line,
+            trail_x=trail_x,
+            trail_y=trail_y
         )
     ]
 
-    _ = FuncAnimation(fig, animate, frames=sim.frames, init_func=lambda: None ,fargs=fargs, interval=interval, repeat=sim.loop)
+    anim = FuncAnimation(fig, animate, frames=sim.frames, init_func=lambda: None ,fargs=fargs, interval=interval, repeat=sim.loop)
+
+    # Interactivity: pause/resume with space or 'p'; scroll to zoom on any axes
+    paused = { 'value': False }
+
+    def toggle_pause(*_):
+        if paused['value']:
+            anim.event_source.start()
+        else:
+            anim.event_source.stop()
+        paused['value'] = not paused['value']
+
+    def on_key(event):
+        if event.key in (' ', 'p'):
+            toggle_pause()
+
+    def on_scroll(event):
+        ax_current = event.inaxes
+        if ax_current is None:
+            return
+        try:
+            xdata = event.xdata
+            ydata = event.ydata
+            if xdata is None or ydata is None:
+                return
+            if event.button == 'up':
+                scale = 1/1.2
+            else:
+                scale = 1.2
+            xlim = ax_current.get_xlim()
+            ylim = ax_current.get_ylim()
+            new_width = (xlim[1]-xlim[0]) * scale
+            new_height = (ylim[1]-ylim[0]) * scale
+            relx = (xdata - xlim[0])/(xlim[1]-xlim[0])
+            rely = (ydata - ylim[0])/(ylim[1]-ylim[0])
+            ax_current.set_xlim([xdata - new_width*relx, xdata + new_width*(1-relx)])
+            ax_current.set_ylim([ydata - new_height*rely, ydata + new_height*(1-rely)])
+            ax_current.figure.canvas.draw_idle()
+        except Exception:
+            pass
+
+    cid_key = fig.canvas.mpl_connect('key_press_event', on_key)
+    cid_scroll = fig.canvas.mpl_connect('scroll_event', on_scroll)
     # anim.save('animation.gif', writer='imagemagick', fps=50)
     plt.show()
 

@@ -1,2 +1,97 @@
+# Python bytecode and cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.env
+.venv
+venv/
+ENV/
+env/
+.python-version
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Testing / coverage
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+pytestdebug.log
+
+# Type checkers / linters
+.mypy_cache/
+.pytype/
+pyrightconfig.json
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Matplotlib cache
+.matplotlib/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# PEP 582
+__pypackages__/
+
+# Project-specific: animation/media outputs in repo root (keep resources/animation.gif)
+/animation.gif
+/animation.mp4
+/animation.webm
+/frames/
+/outputs/
+
+# Local environment files
+.env
+.env.*
+.envrc
+.direnv/
+
+# Tool caches
+/.ruff_cache/
+/.pyre/
+
+# Logs and temporary data
+*.log
+/data/*.tmp
+/data/*.log
 *.pyc
 .vscode

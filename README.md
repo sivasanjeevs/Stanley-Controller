@@ -1,8 +1,6 @@
 # Stanley Controller
 
-<div align="center">
-  <img src="resources/animation.gif" />
-</div>
+
 
 ## Abstract
 
@@ -72,25 +70,26 @@ Every frame
 ## Requirements
 
 ```bash
-pip install numpy
+pip install -r requirements.txt
 ```
 
 ## Demo
 
-Recursively git clone the repository
+You can run either of the two demo simulators:
+
+- Standard Stanley controller with a differential drive model: `animate.py`
+- Piecewise Stanley controller with a kinematic bicycle model: `ani.py`
+
+Run one of the following:
 
 ```bash
-git clone --recursive https://github.com/winstxnhdw/FullStanleyController.git
+# Option 1: Standard (differential drive + non-piecewise controller)
+python animate.py
+
+# Option 2: Piecewise (kinematic bicycle + piecewise controller)
+python ani.py
 ```
 
-Install requirements.txt
-
-```bash
-pip install -r requirements.txt
-```
-
-Play the animation
-
-```
-python animation.py
-```
+Notes:
+- Both demos load waypoints from `data/waypoints.csv` and render an interactive matplotlib window.
+- Use space or `p` to pause/resume; scroll to zoom; drag to pan.

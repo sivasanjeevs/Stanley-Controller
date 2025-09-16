@@ -87,7 +87,8 @@ class StanleyController:
 
         return steering_delay_error
 
-    def stanley_control(self, x, y, yaw, target_velocity, steering_angle):
+    # Modified function signature to include track_width
+    def stanley_control(self, x, y, yaw, target_velocity, steering_angle, track_width):
 
         target_index, dx, dy, absolute_error = self.find_target_path_id(x, y, yaw)
         yaw_error = self.calculate_yaw_term(target_index, yaw)
@@ -100,4 +101,10 @@ class StanleyController:
         desired_steering_angle += self.calculate_steering_delay_term(desired_steering_angle, steering_angle)
         limited_steering_angle = np.clip(desired_steering_angle, -self.max_steer, self.max_steer)
 
-        return limited_steering_angle, target_index, crosstrack_error
+        # Inverse Kinematics to convert steering angle to differential wheel speeds
+        omega = (target_velocity / self.wheelbase) * np.tan(limited_steering_angle)
+        v_R = target_velocity + (omega * track_width) / 2
+        v_L = target_velocity - (omega * track_width) / 2
+
+        # Return wheel velocities instead of a single steering angle
+        return v_L, v_R, target_index, crosstrack_error

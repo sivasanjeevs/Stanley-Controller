@@ -23,7 +23,7 @@ class Simulation:
         self.map_size_x = 60
         self.map_size_y = 20
         self.frames = 1300
-        self.loop = False
+        self.loop = True
 
 class Path:
 
@@ -44,7 +44,7 @@ class Path:
                 x0, y0 = x_points[i], y_points[i]
                 x1, y1 = x_points[i+1], y_points[i+1]
                 dx, dy = x1 - x0, y1 - y0
-                seg_len = (dx*dx + dy*dy) ** 0.5
+                seg_len = (dx*dx + dy*dy) ** 0.7
                 if seg_len == 0:
                     continue
                 n = max(2, int(seg_len / step) + 1)
@@ -72,10 +72,10 @@ class Car:
         self.x = init_x
         self.y = init_y
         self.yaw = init_yaw
-        self.v = 25.0
+        self.v = 10.0
         self.delta = 0.0
         self.wheelbase = 2.5
-        self.max_steer = radians(33)
+        self.max_steer = radians(55)
         self.dt = sim_params.dt
         self.c_r = 0.01
         self.c_a = 2.0
@@ -106,17 +106,21 @@ class Car:
         
         self.delta, self.target_id, self.crosstrack_error = self.tracker.stanley_control(self.x, self.y, self.yaw, self.v, self.delta, self.px, self.py, self.pyaw)
 
-        # Stop near the final waypoint
+        # Improved stopping logic similar to animate.py
         try:
             from math import hypot
-            if self.target_id >= len(self.px) - 1:
-                if hypot(self.x - self.px[-1], self.y - self.py[-1]) < 0.5:
-                    self.v = 0.0
-                    self.delta = 0.0
+            is_last_target = self.target_id >= len(self.px) - 1
+            distance_to_end = hypot(self.x - self.px[-1], self.y - self.py[-1])
+            if is_last_target and distance_to_end < 1.5:
+                self.v = 0.0
+                self.delta = 0.0
+                self.crosstrack_error = 0.0
         except Exception:
             pass
 
-        self.x, self.y, self.yaw = self.kbm.kinematic_model(self.x, self.y, self.yaw, self.v, self.delta)
+        # Only update the model if we are not stopped
+        if self.v > 0.0:
+            self.x, self.y, self.yaw = self.kbm.kinematic_model(self.x, self.y, self.yaw, self.v, self.delta)
 
 class Fargs:
 
@@ -334,6 +338,61 @@ def main():
 
     cid_key = fig.canvas.mpl_connect('key_press_event', on_key)
     cid_scroll = fig.canvas.mpl_connect('scroll_event', on_scroll)
+
+    # Drag-to-pan on any axes (to match animate.py interactivity)
+    pan_state = {
+        'dragging': False,
+        'ax': None,
+        'press_x': None,
+        'press_y': None,
+        'orig_xlim': None,
+        'orig_ylim': None,
+    }
+
+    def on_button_press(event):
+        if event.button != 1:
+            return
+        if event.inaxes is None:
+            return
+        if event.xdata is None or event.ydata is None:
+            return
+        pan_state['dragging'] = True
+        pan_state['ax'] = event.inaxes
+        pan_state['press_x'] = event.xdata
+        pan_state['press_y'] = event.ydata
+        pan_state['orig_xlim'] = event.inaxes.get_xlim()
+        pan_state['orig_ylim'] = event.inaxes.get_ylim()
+
+    def on_button_release(event):
+        if event.button != 1:
+            return
+        pan_state['dragging'] = False
+        pan_state['ax'] = None
+
+    def on_motion(event):
+        if not pan_state['dragging']:
+            return
+        ax_current = pan_state['ax']
+        if ax_current is None:
+            return
+        if event.inaxes != ax_current:
+            return
+        if event.xdata is None or event.ydata is None:
+            return
+        try:
+            dx = event.xdata - pan_state['press_x']
+            dy = event.ydata - pan_state['press_y']
+            x0, x1 = pan_state['orig_xlim']
+            y0, y1 = pan_state['orig_ylim']
+            ax_current.set_xlim(x0 - dx, x1 - dx)
+            ax_current.set_ylim(y0 - dy, y1 - dy)
+            ax_current.figure.canvas.draw_idle()
+        except Exception:
+            pass
+
+    cid_press = fig.canvas.mpl_connect('button_press_event', on_button_press)
+    cid_release = fig.canvas.mpl_connect('button_release_event', on_button_release)
+    cid_motion = fig.canvas.mpl_connect('motion_notify_event', on_motion)
     # anim.save('animation.gif', writer='imagemagick', fps=50)
     plt.show()
 
